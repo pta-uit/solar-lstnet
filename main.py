@@ -5,13 +5,13 @@ import pandas as pd
 from models.LSTNet import LSTNet
 from utils.data_util import DataUtil
 from utils.evaluator import Evaluator
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTNet for Solar Generation Forecasting')
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use (default: -1, i.e., CPU)')
-    parser.add_argument('--data', type=str, required=True, help='Path to the data file')
+    parser.add_argument('--weather_data', type=str, required=True, help='Path to the weather CSV file')
+    parser.add_argument('--building_data', type=str, required=True, help='Path to the building CSV file')
     parser.add_argument('--save', type=str, default='model.pt', help='Path to save the model')
     parser.add_argument('--hidSkip', type=int, default=5, help='Number of skipped hidden states')
     parser.add_argument('--output_fun', type=str, default='Linear', help='Output function: Linear or Sigmoid')
@@ -29,7 +29,7 @@ def main():
     device = torch.device(f'cuda:{args.gpu}' if args.gpu >= 0 and torch.cuda.is_available() else 'cpu')
 
     # Load and preprocess data
-    data_util = DataUtil(args.data)
+    data_util = DataUtil(args.weather_data, args.building_data)
     df = data_util.load_and_preprocess_data()
     df = data_util.perform_feature_engineering()
 

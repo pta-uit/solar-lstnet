@@ -4,15 +4,30 @@ from sklearn.preprocessing import MinMaxScaler
 from statsmodels.tsa.seasonal import STL
 
 class DataUtil:
-    def __init__(self, data_file):
-        self.data_file = data_file
+    def __init__(self, weather_file, building_file):
+        self.weather_file = weather_file
+        self.building_file = building_file
         self.df = None
         self.scaler = MinMaxScaler()
 
     def load_and_preprocess_data(self):
-        self.df = pd.read_csv(self.data_file)
-        self.df['DATE_TIME'] = pd.to_datetime(self.df['DATE_TIME'])
+        # Load weather data
+        df_weather = pd.read_csv(self.weather_file)
+        df_weather_selected = df_weather[['Outdoor Drybulb Temperature [C]', 'Relative Humidity [%]', 'Diffuse Solar Radiation [W/m2]', 'Direct Solar Radiation [W/m2]']]
+
+        # Load building data
+        df_building = pd.read_csv(self.building_file)
+        df_building_selected = df_building[['Month', 'Hour', 'Solar Generation [W/kW]']]
+
+        # Combine data
+        self.df = pd.concat([df_building_selected[['Month', 'Hour']], df_weather_selected, df_building_selected[['Solar Generation [W/kW]']]], axis=1)
+
+        # Create DATE_TIME column
+        self.df['Day'] = 1  # Assuming all data is for the same year, you may need to adjust this
+        self.df['DATE_TIME'] = pd.to_datetime({'year': 2022, 'month': self.df['Month'], 'day': self.df['Day'], 'hour': self.df['Hour']})
         self.df.set_index('DATE_TIME', inplace=True)
+        self.df.drop(columns=['Month', 'Day', 'Hour'], inplace=True)
+
         return self.df
 
     def perform_feature_engineering(self):
