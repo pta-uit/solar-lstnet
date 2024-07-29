@@ -42,6 +42,7 @@ def main():
 
     # Prepare sequences
     X, y = data_util.prepare_sequences(args.seq_length, args.pred_length, features, target)
+    print(f"X shape: {X.shape}, y shape: {y.shape}")  # Debug print
 
     # Split the data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -51,6 +52,8 @@ def main():
     y_train = torch.FloatTensor(y_train).to(device)
     X_test = torch.FloatTensor(X_test).to(device)
     y_test = torch.FloatTensor(y_test).to(device)
+
+    print(f"X_train shape: {X_train.shape}, y_train shape: {y_train.shape}")  # Debug print
 
     # Initialize the model
     model = LSTNet(
@@ -71,6 +74,8 @@ def main():
         for i in range(0, len(X_train), args.batch_size):
             batch_X = X_train[i:i+args.batch_size]
             batch_y = y_train[i:i+args.batch_size]
+
+            print(f"Batch X shape: {batch_X.shape}, Batch y shape: {batch_y.shape}")  # Debug print
 
             optimizer.zero_grad()
             outputs = model(batch_X)
