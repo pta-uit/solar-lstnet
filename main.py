@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 from models.LSTNet import LSTNet
 from utils.data_util import DataUtil
-from utils.evaluator import Evaluator
 from sklearn.model_selection import train_test_split
 
 def parse_args():
@@ -89,29 +88,6 @@ def main():
     # Save the model
     torch.save(model.state_dict(), args.save)
     print(f'Model saved to {args.save}')
-
-    # Evaluation
-    model.eval()
-    with torch.no_grad():
-        y_pred = model(X_test)
-
-    # Convert back to numpy for evaluation
-    y_pred = y_pred.cpu().numpy()
-    y_test = y_test.cpu().numpy()
-
-    # Initialize the evaluator
-    evaluator = Evaluator()
-
-    # Evaluate the model
-    r2, mse, mae = evaluator.evaluate(y_test, y_pred)
-
-    # Print evaluation metrics
-    print(f"R-squared (R2) Score: {r2:.4f}")
-    print(f"Mean Squared Error (MSE): {mse:.4f}")
-    print(f"Mean Absolute Error (MAE): {mae:.4f}")
-
-    # Plot results
-    evaluator.plot_results(y_test, y_pred)
 
 if __name__ == "__main__":
     main()
