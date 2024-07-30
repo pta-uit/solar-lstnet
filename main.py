@@ -2,7 +2,7 @@ import argparse
 import torch
 import numpy as np
 import pandas as pd
-from models.LSTNet import LSTNet
+from models.LSTNet import Model
 from utils.data_util import DataUtil
 from sklearn.model_selection import train_test_split
 
@@ -81,7 +81,7 @@ def main():
     data = Data(len(features))
 
     # Initialize the model
-    model = LSTNet(args, data).to(device)
+    model = Model(args, data).to(device)
 
     # Define loss function and optimizer
     criterion = torch.nn.MSELoss()
