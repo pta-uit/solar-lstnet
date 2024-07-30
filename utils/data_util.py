@@ -62,7 +62,7 @@ class DataUtil:
 
         X, y = [], []
         for i in range(len(data) - window_size - horizon + 1):
-            X.append(data[i:(i+window_size), :])
+            X.append(data[i:(i+window_size), :-1])  # Exclude the target from input features
             y.append(data[(i+window_size):(i+window_size+horizon), -1])
         return np.array(X), np.array(y)
 
