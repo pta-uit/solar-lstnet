@@ -54,19 +54,17 @@ class DataUtil:
 
         return self.df
 
-    def prepare_sequences(self, seq_length, pred_length, features, target):
+    def prepare_sequences(self, window_size, horizon, features, target):
         if self.df is None:
             raise ValueError("Data not loaded and preprocessed. Call load_and_preprocess_data() and perform_feature_engineering() first.")
 
         data = self.scaler.fit_transform(self.df[features + [target]])
 
-        xs, ys = [], []
-        for i in range(len(data) - seq_length - pred_length + 1):
-            x = data[i:(i+seq_length), :-1]
-            y = data[(i+seq_length):(i+seq_length+pred_length), -1]
-            xs.append(x)
-            ys.append(y)
-        return np.array(xs), np.array(ys)
+        X, y = [], []
+        for i in range(len(data) - window_size - horizon + 1):
+            X.append(data[i:(i+window_size), :])
+            y.append(data[(i+window_size):(i+window_size+horizon), -1])
+        return np.array(X), np.array(y)
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)

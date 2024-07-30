@@ -1,61 +1,73 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-class LSTNet(nn.Module):
-    def __init__(self, input_size, seq_length, pred_length, skip_steps=2, ar_window=24, cnn_filters=100, cnn_kernel=6, lstm_units=100, skip_rnn_units=50, output_fun='Linear'):
-        super(LSTNet, self).__init__()
-        self.input_size = input_size
-        self.seq_length = seq_length
-        self.pred_length = pred_length
-        self.skip_steps = skip_steps
-        self.ar_window = ar_window
-
-        self.conv1d = nn.Conv1d(input_size, cnn_filters, kernel_size=cnn_kernel)
-        self.lstm = nn.LSTM(cnn_filters, lstm_units, batch_first=True)
-        self.skip_rnn = nn.LSTM(input_size * skip_steps, skip_rnn_units, batch_first=True)
-        self.ar_dense = nn.Linear(ar_window * input_size, 100)
-        self.output_dense = nn.Linear(lstm_units + skip_rnn_units + 100, pred_length)
-
-        if output_fun == 'Linear':
-            self.output_fun = None
-        elif output_fun == 'Sigmoid':
-            self.output_fun = nn.Sigmoid()
+class Model(nn.Module):
+    def __init__(self, args, data):
+        super(Model, self).__init__()
+        self.use_cuda = args.cuda
+        self.P = args.window;
+        self.m = data.m
+        self.hidR = args.hidRNN;
+        self.hidC = args.hidCNN;
+        self.hidS = args.hidSkip;
+        self.Ck = args.CNN_kernel;
+        self.skip = args.skip;
+        self.pt = (self.P - self.Ck)/self.skip
+        self.hw = args.highway_window
+        self.conv1 = nn.Conv2d(1, self.hidC, kernel_size = (self.Ck, self.m));
+        self.GRU1 = nn.GRU(self.hidC, self.hidR);
+        self.dropout = nn.Dropout(p = args.dropout);
+        if (self.skip > 0):
+            self.GRUskip = nn.GRU(self.hidC, self.hidS);
+            self.linear1 = nn.Linear(self.hidR + self.skip * self.hidS, self.m);
         else:
-            raise ValueError("output_fun must be 'Linear' or 'Sigmoid'")
-
+            self.linear1 = nn.Linear(self.hidR, self.m);
+        if (self.hw > 0):
+            self.highway = nn.Linear(self.hw, 1);
+        self.output = None;
+        if (args.output_fun == 'sigmoid'):
+            self.output = F.sigmoid;
+        if (args.output_fun == 'tanh'):
+            self.output = F.tanh;
+ 
     def forward(self, x):
-        print(f"Input shape: {x.shape}")  # Debug print
-
-        # CNN component
-        cnn_out = self.conv1d(x.transpose(1, 2)).transpose(1, 2)
-        print(f"CNN output shape: {cnn_out.shape}")  # Debug print
+        batch_size = x.size(0);
         
-        # LSTM component
-        _, (lstm_out, _) = self.lstm(cnn_out)
-        lstm_out = lstm_out.squeeze(0)
-        print(f"LSTM output shape: {lstm_out.shape}")  # Debug print
+        #CNN
+        c = x.view(-1, 1, self.P, self.m);
+        c = F.relu(self.conv1(c));
+        c = self.dropout(c);
+        c = torch.squeeze(c, 3);
+        
+        # RNN 
+        r = c.permute(2, 0, 1).contiguous();
+        _, r = self.GRU1(r);
+        r = self.dropout(torch.squeeze(r,0));
 
-        # Skip-RNN component
-        skip_rnn_input = x.unfold(dimension=1, size=self.skip_steps, step=self.skip_steps).reshape(x.size(0), -1, self.skip_steps * self.input_size)
-        print(f"Skip-RNN input shape: {skip_rnn_input.shape}")  # Debug print
-        _, (skip_rnn_out, _) = self.skip_rnn(skip_rnn_input)
-        skip_rnn_out = skip_rnn_out.squeeze(0)
-        print(f"Skip-RNN output shape: {skip_rnn_out.shape}")  # Debug print
-
-        # Autoregressive component
-        ar_input = x[:, -self.ar_window:, :].contiguous().view(x.size(0), -1)
-        ar_out = self.ar_dense(ar_input)
-        print(f"AR output shape: {ar_out.shape}")  # Debug print
-
-        # Concatenate all components
-        concat_out = torch.cat([lstm_out, skip_rnn_out, ar_out], dim=1)
-        print(f"Concatenated output shape: {concat_out.shape}")  # Debug print
-
-        # Output layer
-        output = self.output_dense(concat_out)
-        print(f"Final output shape: {output.shape}")  # Debug print
-
-        if self.output_fun:
-            output = self.output_fun(output)
-
-        return output
+        
+        #skip-rnn
+        
+        if (self.skip > 0):
+            s = c[:,:, int(-self.pt * self.skip):].contiguous();
+            s = s.view(batch_size, self.hidC, self.pt, self.skip);
+            s = s.permute(2,0,3,1).contiguous();
+            s = s.view(self.pt, batch_size * self.skip, self.hidC);
+            _, s = self.GRUskip(s);
+            s = s.view(batch_size, self.skip * self.hidS);
+            s = self.dropout(s);
+            r = torch.cat((r,s),1);
+        
+        res = self.linear1(r);
+        
+        #highway
+        if (self.hw > 0):
+            z = x[:, -self.hw:, :];
+            z = z.permute(0,2,1).contiguous().view(-1, self.hw);
+            z = self.highway(z);
+            z = z.view(-1,self.m);
+            res = res + z;
+            
+        if (self.output):
+            res = self.output(res);
+        return res;
