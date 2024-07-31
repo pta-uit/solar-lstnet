@@ -1,4 +1,4 @@
-## Deep Learning for Solar Generation forecasting
+## Solar Generation Forecasting with LSTNet
 
 ### Mainly referenced paper
 Modeling Long- and Short-Term Temporal Patterns with Deep Neural Networks.(https://arxiv.org/abs/1703.07015)
@@ -6,25 +6,48 @@ Modeling Long- and Short-Term Temporal Patterns with Deep Neural Networks.(https
 ### Dataset
 NeurIPS 2022: CityLearn Challenge ([starter-kit-team-Together](https://gitlab.aicrowd.com/aicrowd/challenges/citylearn-challenge/citylearn-2022-starter-kit-team-together/-/tree/master/data/citylearn_challenge_2022_phase_1?ref_type=heads)); Building_1.csv & weather.csv
 
+### Requirements
+
+- Python 3.7+
+- PyTorch 1.7+
+- NumPy
+- Pandas
+- Scikit-learn
+- Statsmodels
+- Matplotlib
+
 ### Colab usage
 ```
 !git clone https://github.com/quocanuit/lstnet-solar-gen.git
 ```
 ```
-!python /repo_path/main.py --gpu 0 --weather_data /your_path/weather.csv --building_data /your_path/Building_1.csv --save /your_path/model.pt --window 168 --horizon 24 --hidRNN 100 --hidCNN 100 --hidSkip 5 --CNN_kernel 6 --skip 24 --highway_window 24 --epochs 100 --batch_size 128 --lr 0.001 --gpu -1
+!python /repo_path/main.py --weather_data /your_path/weather.csv --building_data /your_path/Building_1.csv --save /your_path/model.pt --loss_history /your_path/loss_history.json
 ```
-#### args:
+#### Optional arguments for training:
 |--||
 |-|-|
-| --window | Input sequence length (168 hours = 7 days) |
-| --horizon | Prediction horizon (24 hours = 1 day) |
-| --hidRNN | Number of hidden units in the RNN |
-| --hidCNN | Number of filters in the CNN |
-| --hidSkip | Number of hidden units in the skip RNN |
-| --CNN_kernel | Size of the CNN kernel |
-| --skip | Skip length |
-| --highway_window | Size of the highway window |
-| --epochs | Number of training epochs |
-| --batch_size | Batch size for training |
-| --lr | Learning rate |
-| --gpu | GPU to use (-1 means use CPU) |
+| `--gpu` | GPU to use (default: -1, i.e., CPU) |
+| `--save` | Path to save the model (default: 'model.pt') |
+| `--window` | Window size (default: 168) |
+| `--horizon` | Forecasting horizon (default: 24) |
+| `--hidRNN` | Number of RNN hidden units (default: 100) |
+| `--hidCNN` | Number of CNN hidden units (default: 100) |
+| `--hidSkip` | Number of skip RNN hidden units (default: 5) |
+| `--CNN_kernel` | CNN kernel size (default: 6) |
+| `--skip` | Skip length (default: 24) |
+| `--highway_window` | Highway window size (default: 24) |
+| `--dropout` | Dropout rate (default: 0.2) |
+| `--output_fun` | Output function: sigmoid, tanh or None (default: sigmoid) |
+| `--epochs` | Number of epochs (default: 100) |
+| `--batch_size` | Batch size (default: 128) |
+| `--lr` | Learning rate (default: 0.001) |
+| `--loss_history` | Path to save the loss history (default: None, i.e., do not save) |
+
+### Evaluating the model:
+```
+!python repo_path/eval.py --model /your_path/model.pt --weather_data /your_path/weather.csv --building_data /your_path/Building_1.csv --output_folder /your_path/results/ --loss_history /your_path/loss_history.json
+```
+
+#### Plot first sample:
+
+![Forecast-plot](https://i.imgur.com/5K4IcGt.png)
