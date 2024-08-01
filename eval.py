@@ -152,6 +152,10 @@ def plot_results(y_test, y_pred, output_folder, horizon):
     plt.title('Distribution of Prediction Errors (1-hour horizon)')
     plt.xlabel('Prediction Error [W/kW]')
     plt.ylabel('Frequency')
+    plt.axvline(x=0, color='r', linestyle='--', label='Zero Error')
+    plt.axvline(x=np.mean(errors), color='g', linestyle='--', label=f'Mean Error: {np.mean(errors):.2f}')
+    plt.legend()
+    plt.tight_layout()
     plt.savefig(os.path.join(output_folder, 'error_distribution_1h.png'))
     plt.close()
 
@@ -167,12 +171,15 @@ def plot_results(y_test, y_pred, output_folder, horizon):
     
     plt.figure(figsize=(12, 6))
     plt.plot(range(1, horizon + 1), mae_per_horizon, label='MAE', marker='o')
-    plt.plot(range(1, horizon + 1), rmse_per_horizon, label='RMSE', marker='o')
+    plt.plot(range(1, horizon + 1), rmse_per_horizon, label='RMSE', marker='s')
     plt.title('Model Performance Across Forecast Horizon')
-    plt.xlabel('Horizon (hours ahead)')
-    plt.ylabel('Error')
+    plt.xlabel('Forecast Horizon (hours ahead)')
+    plt.ylabel('Error [W/kW]')
     plt.legend()
     plt.grid(True)
+    plt.xticks(range(1, horizon + 1, 2))  # Show every other hour on x-axis
+    plt.fill_between(range(1, horizon + 1), mae_per_horizon, rmse_per_horizon, alpha=0.2, label='MAE-RMSE gap')
+    plt.tight_layout()
     plt.savefig(os.path.join(output_folder, 'horizon_performance.png'))
     plt.close()
 
