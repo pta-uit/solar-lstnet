@@ -3,23 +3,20 @@ import torch
 import numpy as np
 import pandas as pd
 from models.LSTNet import Model
-from utils.data_util import DataUtil
 from sklearn.model_selection import train_test_split
 import os
 import json
+import pickle
 
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTNet for Solar Generation Forecasting')
     
     # Required arguments
-    parser.add_argument('--weather_data', type=str, required=True, help='Path to the weather CSV file')
-    parser.add_argument('--building_data', type=str, required=True, help='Path to the building CSV file')
+    parser.add_argument('--preprocessed_data', type=str, required=True, help='Path to the preprocessed data file')
     
     # Optional arguments with default values
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use (default: -1, i.e., CPU)')
     parser.add_argument('--save', type=str, default='model.pt', help='Path to save the model')
-    parser.add_argument('--window', type=int, default=168, help='Window size (default: 168)')
-    parser.add_argument('--horizon', type=int, default=24, help='Forecasting horizon (default: 24)')
     parser.add_argument('--hidRNN', type=int, default=100, help='Number of RNN hidden units (default: 100)')
     parser.add_argument('--hidCNN', type=int, default=100, help='Number of CNN hidden units (default: 100)')
     parser.add_argument('--hidSkip', type=int, default=5, help='Number of skip RNN hidden units (default: 5)')
@@ -40,26 +37,21 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Set device
     device = torch.device(f'cuda:{args.gpu}' if args.cuda else 'cpu')
     print(f"Using device: {device}")
 
-    # Load and preprocess data
-    data_util = DataUtil(args.weather_data, args.building_data)
-    df = data_util.load_and_preprocess_data()
-    df = data_util.perform_feature_engineering()
-
-    # Define features and target
-    features = ['Outdoor Drybulb Temperature [C]', 'Relative Humidity [%]',
-                'Diffuse Solar Radiation [W/m2]', 'Direct Solar Radiation [W/m2]',
-                'hour_sin', 'hour_cos', 'day_of_year_sin', 'day_of_year_cos', 'month',
-                'trend', 'seasonal', 'residual']
-    target = 'Solar Generation [W/kW]'
-
-    # Prepare sequences
-    X, y = data_util.prepare_sequences(args.window, args.horizon, features, target)
-    print(f"X shape: {X.shape}, y shape: {y.shape}")
-
+    # Load preprocessed data
+    with open(args.preprocessed_data, 'rb') as f:
+        preprocessed_data = pickle.load(f)
+    
+    X = preprocessed_data['X']
+    y = preprocessed_data['y']
+    features = preprocessed_data['features']
+    
+    # Add window and horizon to args
+    args.window = preprocessed_data['window']
+    args.horizon = preprocessed_data['horizon']
+    
     # Split the data
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 

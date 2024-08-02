@@ -9,28 +9,27 @@ import json
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from models.LSTNet import Model
-from utils.data_util import DataUtil
 import os
+import pickle
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Evaluate LSTNet for Solar Generation Forecasting')
     
     # Required arguments
     parser.add_argument('--model', type=str, required=True, help='Path to the saved model')
-    parser.add_argument('--weather_data', type=str, required=True, help='Path to the weather CSV file')
-    parser.add_argument('--building_data', type=str, required=True, help='Path to the building CSV file')
+    parser.add_argument('--preprocessed_data', type=str, required=True, help='Path to the preprocessed data file')
     
     # Optional arguments
     parser.add_argument('--output_folder', type=str, default='evaluation_results', help='Folder to save output figures and results')
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use (default: -1, i.e., CPU)')
-    parser.add_argument('--window', type=int, default=168, help='Window size (default: 168)')
-    parser.add_argument('--horizon', type=int, default=24, help='Forecasting horizon (default: 24)')
     parser.add_argument('--hidRNN', type=int, default=100, help='Number of RNN hidden units (default: 100)')
     parser.add_argument('--hidCNN', type=int, default=100, help='Number of CNN hidden units (default: 100)')
     parser.add_argument('--hidSkip', type=int, default=5, help='Number of skip RNN hidden units (default: 5)')
     parser.add_argument('--CNN_kernel', type=int, default=6, help='CNN kernel size (default: 6)')
     parser.add_argument('--skip', type=int, default=24, help='Skip length (default: 24)')
     parser.add_argument('--highway_window', type=int, default=24, help='Highway window size (default: 24)')
+    parser.add_argument('--window', type=int, default=168, help='Window size (default: 168)')
+    parser.add_argument('--horizon', type=int, default=24, help='Forecasting horizon (default: 24)')
     parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate (default: 0.2)')
     parser.add_argument('--output_fun', type=str, default='sigmoid', help='Output function: sigmoid, tanh or None (default: sigmoid)')
     parser.add_argument('--loss_history', type=str, default=None, help='Path to the loss history JSON file (default: None, i.e., do not plot loss history)')
@@ -40,11 +39,44 @@ def parse_args():
     return args
 
 def load_model(model_path, args, device):
-    data = type('Data', (), {'m': 12})()  # Dummy Data object with m attribute
+    data = type('Data', (), {'m': len(args.features)})()  # Dummy Data object with m attribute
     model = Model(args, data).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     return model
+
+def evaluate_model(model, X_test, y_test, scaler, target_idx):
+    with torch.no_grad():
+        y_pred = model(X_test).cpu().numpy()
+    
+    y_test = y_test.cpu().numpy()
+    X_test = X_test.cpu().numpy()
+    X_test_last = X_test[:, -1, :]
+
+    y_pred_inv = np.zeros_like(y_pred)
+    y_test_inv = np.zeros_like(y_test)
+
+    for i in range(y_pred.shape[1]):
+        combined_pred = np.concatenate((X_test_last, y_pred[:, i].reshape(-1, 1)), axis=1)
+        combined_test = np.concatenate((X_test_last, y_test[:, i].reshape(-1, 1)), axis=1)
+        y_pred_inv[:, i] = scaler.inverse_transform(combined_pred)[:, target_idx]
+        y_test_inv[:, i] = scaler.inverse_transform(combined_test)[:, target_idx]
+
+    y_pred_flat = y_pred_inv.flatten()
+    y_test_flat = y_test_inv.flatten()
+
+    r2 = r2_score(y_test_flat, y_pred_flat)
+    mse = mean_squared_error(y_test_flat, y_pred_flat)
+    mae = mean_absolute_error(y_test_flat, y_pred_flat)
+
+    # Calculate metrics for scaled data
+    y_pred_scaled = y_pred.flatten()
+    y_test_scaled = y_test.flatten()
+    r2_scaled = r2_score(y_test_scaled, y_pred_scaled)
+    mse_scaled = mean_squared_error(y_test_scaled, y_pred_scaled)
+    mae_scaled = mean_absolute_error(y_test_scaled, y_pred_scaled)
+
+    return r2, mse, mae, r2_scaled, mse_scaled, mae_scaled, y_pred_inv, y_test_inv
 
 def plot_loss_history(loss_history_path, output_folder):
     if not loss_history_path or not os.path.exists(loss_history_path):
@@ -69,39 +101,6 @@ def plot_loss_history(loss_history_path, output_folder):
     plt.close()
 
     print(f"Loss history plot saved in folder: '{output_folder}'")
-
-def evaluate_model(model, X_test, y_test, data_util, target_idx):
-    with torch.no_grad():
-        y_pred = model(X_test).cpu().numpy()
-    
-    y_test = y_test.cpu().numpy()
-    X_test = X_test.cpu().numpy()
-    X_test_last = X_test[:, -1, :]
-
-    y_pred_inv = np.zeros_like(y_pred)
-    y_test_inv = np.zeros_like(y_test)
-
-    for i in range(y_pred.shape[1]):
-        combined_pred = np.concatenate((X_test_last, y_pred[:, i].reshape(-1, 1)), axis=1)
-        combined_test = np.concatenate((X_test_last, y_test[:, i].reshape(-1, 1)), axis=1)
-        y_pred_inv[:, i] = data_util.inverse_transform(combined_pred)[:, target_idx]
-        y_test_inv[:, i] = data_util.inverse_transform(combined_test)[:, target_idx]
-
-    y_pred_flat = y_pred_inv.flatten()
-    y_test_flat = y_test_inv.flatten()
-
-    r2 = r2_score(y_test_flat, y_pred_flat)
-    mse = mean_squared_error(y_test_flat, y_pred_flat)
-    mae = mean_absolute_error(y_test_flat, y_pred_flat)
-
-    # Calculate metrics for scaled data
-    y_pred_scaled = y_pred.flatten()
-    y_test_scaled = y_test.flatten()
-    r2_scaled = r2_score(y_test_scaled, y_pred_scaled)
-    mse_scaled = mean_squared_error(y_test_scaled, y_pred_scaled)
-    mae_scaled = mean_absolute_error(y_test_scaled, y_pred_scaled)
-
-    return r2, mse, mae, r2_scaled, mse_scaled, mae_scaled, y_pred_inv, y_test_inv
 
 def plot_results(y_test, y_pred, output_folder, horizon):
     os.makedirs(output_folder, exist_ok=True)
@@ -207,28 +206,31 @@ def main():
     device = torch.device(f'cuda:{args.gpu}' if args.cuda else 'cpu')
     print(f"Using device: {device}")
 
-    data_util = DataUtil(args.weather_data, args.building_data)
-    df = data_util.load_and_preprocess_data()
-    df = data_util.perform_feature_engineering()
+    # Load preprocessed data
+    with open(args.preprocessed_data, 'rb') as f:
+        preprocessed_data = pickle.load(f)
+    
+    X = preprocessed_data['X']
+    y = preprocessed_data['y']
+    features = preprocessed_data['features']
+    target = preprocessed_data['target']
+    scaler = preprocessed_data['scaler']
 
-    features = ['Outdoor Drybulb Temperature [C]', 'Relative Humidity [%]',
-                'Diffuse Solar Radiation [W/m2]', 'Direct Solar Radiation [W/m2]',
-                'hour_sin', 'hour_cos', 'day_of_year_sin', 'day_of_year_cos', 'month',
-                'trend', 'seasonal', 'residual']
-    target = 'Solar Generation [W/kW]'
+    # Add window and horizon to args
+    args.window = preprocessed_data['window']
+    args.horizon = preprocessed_data['horizon']
+    args.features = features
 
     all_columns = features + [target]
     target_idx = all_columns.index(target)
 
-    X, y = data_util.prepare_sequences(args.window, args.horizon, features, target)
-    
     split_point = int(0.8 * len(X))
     X_test = torch.FloatTensor(X[split_point:]).to(device)
     y_test = torch.FloatTensor(y[split_point:]).to(device)
 
     model = load_model(args.model, args, device)
 
-    r2, mse, mae, r2_scaled, mse_scaled, mae_scaled, y_pred_inv, y_test_inv = evaluate_model(model, X_test, y_test, data_util, target_idx)
+    r2, mse, mae, r2_scaled, mse_scaled, mae_scaled, y_pred_inv, y_test_inv = evaluate_model(model, X_test, y_test, scaler, target_idx)
 
     print(f'R-squared (R2) Score: {r2:.4f}')
     print(f'Mean Squared Error (MSE): {mse:.4f}')

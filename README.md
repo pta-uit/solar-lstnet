@@ -8,20 +8,28 @@ NeurIPS 2022: CityLearn Challenge ([starter-kit-team-Together](https://gitlab.ai
 
 ### Requirements
 
-- Python 3.7+
-- PyTorch 1.7+
-- NumPy
-- Pandas
-- Scikit-learn
-- Statsmodels
-- Matplotlib
+```
+torch==1.9.0
+numpy==1.21.0
+pandas==1.3.0
+scikit-learn==0.24.2
+statsmodels==0.12.2
+matplotlib==3.4.2
+```
 
 ### Colab usage
+
+Clone this repo:
 ```
 !git clone https://github.com/quocanuit/lstnet-solar-gen.git
 ```
+Data preprocessing stage:
 ```
-!python /repo_path/main.py --weather_data /your_path/weather.csv --building_data /your_path/Building_1.csv --save /your_path/model.pt --loss_history /your_path/loss_history.json
+!python preprocess_data.py --weather_data /your_path/weather.csv --building_data /your_path/Building_1.csv --output preprocessed_data.pkl
+```
+Training stage:
+```
+!python main.py --batch_size 32 --preprocessed_data preprocessed_data.pkl --save model.pt --loss_history loss_history.json
 ```
 #### Optional arguments for training:
 |--||
@@ -45,9 +53,9 @@ NeurIPS 2022: CityLearn Challenge ([starter-kit-team-Together](https://gitlab.ai
 
 ### Evaluating the model:
 ```
-!python repo_path/eval.py --model /your_path/model.pt --weather_data /your_path/weather.csv --building_data /your_path/Building_1.csv --output_folder /your_path/results/ --loss_history /your_path/loss_history.json
+!python eval.py --model model.pt --preprocessed_data preprocessed_data.pkl --loss_history loss_history.json
 ```
 
 #### Plot first sample:
 
-![Forecast-plot](https://i.imgur.com/5K4IcGt.png)
+![Forecast-plot](https://i.imgur.com/HHENEZd.png)
