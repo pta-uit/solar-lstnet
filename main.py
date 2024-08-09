@@ -7,6 +7,9 @@ from sklearn.model_selection import train_test_split
 import os
 import json
 import pickle
+from s3fs.core import S3FileSystem
+import boto3
+from botocore.exceptions import NoCredentialsError
 
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTNet for Solar Generation Forecasting')
@@ -34,6 +37,15 @@ def parse_args():
     args.cuda = args.gpu >= 0 and torch.cuda.is_available()
     return args
 
+def load_s3(s3_path,arr):
+    s3 = S3FileSystem()
+    with s3.open(s3_path, 'wb') as f:
+        f.write(pickle.dumps(arr))
+
+def get_s3(s3_path):
+    s3 = S3FileSystem()
+    return np.load(s3.open(s3_path), allow_pickle=True)
+
 def main():
     args = parse_args()
 
@@ -41,8 +53,15 @@ def main():
     print(f"Using device: {device}")
 
     # Load preprocessed data
-    with open(args.preprocessed_data, 'rb') as f:
-        preprocessed_data = pickle.load(f)
+   # with open(args.preprocessed_data, 'rb') as f:
+    #    preprocessed_data = pickle.load(f)
+
+    #s3client = boto3.client('s3')
+    #response = s3client.get_object(Bucket='trambk', Key=args.preprocessed_data)
+    #body = response['Body'].read()
+    #preprocessed_data = pickle.loads(body)
+
+    preprocessed_data = get_s3(args.preprocessed_data)
     
     X = preprocessed_data['X']
     y = preprocessed_data['y']
@@ -124,8 +143,11 @@ def main():
         print(f'Loss history saved to {args.loss_history}')
 
     # Save the model
-    torch.save(model.state_dict(), args.save)
-    print(f'Model saved to {args.save}')
+    torch.save(model.state_dict(), "model.pt")
+    #print(f'Model saved to {args.save}')
+
+    load_s3(os.path.join(args.save,"model.pt"),model.state_dict())
+    print(f'Saved model to {args.save}')
 
 if __name__ == "__main__":
     main()

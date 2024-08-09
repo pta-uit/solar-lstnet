@@ -4,6 +4,10 @@ import pandas as pd
 from utils.data_util import DataUtil
 import os
 import pickle
+from pickle import dump
+from s3fs.core import S3FileSystem
+import boto3
+from botocore.exceptions import NoCredentialsError
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Preprocess data for LSTNet Solar Generation Forecasting')
@@ -13,6 +17,11 @@ def parse_args():
     parser.add_argument('--horizon', type=int, default=24, help='Forecasting horizon (default: 24)')
     parser.add_argument('--output', type=str, default='preprocessed_data.pkl', help='Path to save the preprocessed data')
     return parser.parse_args()
+
+def load_s3(s3_path,arr):
+    s3 = S3FileSystem()
+    with s3.open(s3_path, 'wb') as f:
+        f.write(pickle.dumps(arr))
 
 def main():
     args = parse_args()
@@ -44,10 +53,11 @@ def main():
         'horizon': args.horizon
     }
     
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    with open(args.output, 'wb') as f:
-        pickle.dump(preprocessed_data, f)
-    
+    #os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    #with open(args.output, 'wb') as f:
+     #   pickle.dump(preprocessed_data, f)
+
+    load_s3(os.path.join(args.output,"preprocessed_data.pkl"),preprocessed_data)
     print(f"Preprocessed data saved to {args.output}")
 
 if __name__ == "__main__":
