@@ -6,3 +6,4 @@ statsmodels
 matplotlib
 s3fs
 boto3
+mlflow

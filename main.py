@@ -10,6 +10,7 @@ import pickle
 from s3fs.core import S3FileSystem
 import boto3
 from botocore.exceptions import NoCredentialsError
+import mlflow
 
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTNet for Solar Generation Forecasting')
@@ -97,57 +98,80 @@ def main():
     train_losses = []
     val_losses = []
 
-    for epoch in range(args.epochs):
-        model.train()
-        total_loss = 0
-        for i in range(0, len(X_train), args.batch_size):
-            batch_X = X_train[i:i+args.batch_size]
-            batch_y = y_train[i:i+args.batch_size]
+    mlflow.set_tracking_uri("http://127.0.0.1:5000")
+    mlflow.set_experiment(experiment_id="0")
+    with mlflow.start_run() as run:
+        mlflow.log_param("hidRNN", args.hidRNN)
+        mlflow.log_param("hidCNN", args.hidCNN)
+        mlflow.log_param("hidSkip", args.hidSkip)
+        mlflow.log_param("CNN_kernel", args.CNN_kernel)
+        mlflow.log_param("skip", args.skip)
+        mlflow.log_param("highway_window", args.highway_window)
+        mlflow.log_param("dropout", args.dropout)
+        mlflow.log_param("output_fun", args.output_fun)
+        mlflow.log_param("epochs", args.epochs)
+        mlflow.log_param("batch_size", args.batch_size)
+        mlflow.log_param("lr", args.lr)
+        # with open("model_summary.txt", "w") as f:
+        #     f.write(str(summary(model)))
+        #     mlflow.log_artifact("model_summary.txt")
 
-            optimizer.zero_grad()
-            outputs = model(batch_X)
-            loss = criterion(outputs, batch_y)
-            loss.backward()
-            optimizer.step()
+        ###### I edited this part to run only 2 epochs for faster testing
+        ###### For real training, please uncomment the for loop below
+        #for epoch in range(args.epochs):
+        for epoch in range(0,2):
+            model.train()
+            total_loss = 0
+            for i in range(0, len(X_train), args.batch_size):
+                batch_X = X_train[i:i+args.batch_size]
+                batch_y = y_train[i:i+args.batch_size]
 
-            total_loss += loss.item()
-
-        avg_loss = total_loss / (len(X_train) / args.batch_size)
-        train_losses.append(avg_loss)
-
-        # Validation
-        model.eval()
-        val_loss = 0
-        with torch.no_grad():
-            for i in range(0, len(X_val), args.batch_size):
-                batch_X = X_val[i:i+args.batch_size]
-                batch_y = y_val[i:i+args.batch_size]
+                optimizer.zero_grad()
                 outputs = model(batch_X)
                 loss = criterion(outputs, batch_y)
-                val_loss += loss.item()
-        
-        avg_val_loss = val_loss / (len(X_val) / args.batch_size)
-        val_losses.append(avg_val_loss)
+                loss.backward()
+                optimizer.step()
 
-        print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+                total_loss += loss.item()
 
-    # Save the loss history if specified
-    if args.loss_history:
-        history = {
-            'train_loss': train_losses,
-            'val_loss': val_losses
-        }
-        os.makedirs(os.path.dirname(args.loss_history), exist_ok=True)
-        with open(args.loss_history, 'w') as f:
-            json.dump(history, f)
-        print(f'Loss history saved to {args.loss_history}')
+            avg_loss = total_loss / (len(X_train) / args.batch_size)
+            train_losses.append(avg_loss)
 
-    # Save the model
-    torch.save(model.state_dict(), "model.pt")
-    #print(f'Model saved to {args.save}')
+            # Validation
+            model.eval()
+            val_loss = 0
+            with torch.no_grad():
+                for i in range(0, len(X_val), args.batch_size):
+                    batch_X = X_val[i:i+args.batch_size]
+                    batch_y = y_val[i:i+args.batch_size]
+                    outputs = model(batch_X)
+                    loss = criterion(outputs, batch_y)
+                    val_loss += loss.item()
+            
+            avg_val_loss = val_loss / (len(X_val) / args.batch_size)
+            val_losses.append(avg_val_loss)
 
-    load_s3(os.path.join(args.save,"model.pt"),model.state_dict())
-    print(f'Saved model to {args.save}')
+            print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+
+        # Save the loss history if specified
+        if args.loss_history:
+            history = {
+                'train_loss': train_losses,
+                'val_loss': val_losses
+            }
+            os.makedirs(os.path.dirname(args.loss_history), exist_ok=True)
+            with open(args.loss_history, 'w') as f:
+                json.dump(history, f)
+            print(f'Loss history saved to {args.loss_history}')
+
+        # Save the model
+        torch.save(model.state_dict(), "model.pt")
+        mlflow.pytorch.log_model(model, "model.pt")
+
+        #print(f'Model saved to {args.save}')
+
+        load_s3(os.path.join(args.save,"model.pt"),model.state_dict())
+        print(f'Saved model to {args.save}')
 
 if __name__ == "__main__":
     main()
