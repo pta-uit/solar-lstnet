@@ -4,10 +4,12 @@ import pandas as pd
 import numpy as np
 import boto3
 from io import BytesIO
+import random
 
 def get_sample_dataframe(X, features, window):
-    # Take a single sample from X
-    sample = X[0]
+    # Randomly select a sample from X
+    sample_index = random.randint(0, len(X) - 1)
+    sample = X[sample_index]
     
     # Create a DataFrame with the correct number of rows and columns
     df = pd.DataFrame(sample, columns=features)
@@ -39,7 +41,12 @@ def main():
     parser = argparse.ArgumentParser(description='Generate a sample DataFrame for prediction')
     parser.add_argument('--preprocessed_data', type=str, required=True, help='S3 path to the preprocessed data file')
     parser.add_argument('--output', type=str, default='s3://your-bucket/sample_data.csv', help='S3 path to save the sample DataFrame')
+    parser.add_argument('--seed', type=int, default=None, help='Random seed for reproducibility')
     args = parser.parse_args()
+
+    # Set random seed if provided
+    if args.seed is not None:
+        random.seed(args.seed)
 
     # Parse S3 paths
     input_bucket, input_key = parse_s3_path(args.preprocessed_data)
