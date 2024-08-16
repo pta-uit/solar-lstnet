@@ -12,9 +12,10 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 import mlflow
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTNet for Solar Generation Forecasting')
-    
+
     # Required arguments
     parser.add_argument('--preprocessed_data', type=str, required=True, help='Path to the preprocessed data file')
     
@@ -33,6 +34,8 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size (default: 128)')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate (default: 0.001)')
     parser.add_argument('--loss_history', type=str, default=None, help='Path to save the loss history (default: None, i.e., do not save)')
+    
+    parser.add_argument('--mlflow_uri', type=str, default="http://localhost:5000")
 
     args = parser.parse_args()
     args.cuda = args.gpu >= 0 and torch.cuda.is_available()
@@ -98,9 +101,10 @@ def main():
     train_losses = []
     val_losses = []
 
-    mlflow.set_tracking_uri("http://127.0.0.1:5000")
-    mlflow.set_experiment(experiment_id="0")
-    with mlflow.start_run() as run:
+    mlflow.set_tracking_uri("{args.mlflow_uri}")
+    #mlflow.set_experiment(experiment_id="0")
+    mlflow.set_experiment("solar-generation")
+    with mlflow.start_run(run_name="lstnet-solar-gen") as run:
         mlflow.log_param("hidRNN", args.hidRNN)
         mlflow.log_param("hidCNN", args.hidCNN)
         mlflow.log_param("hidSkip", args.hidSkip)
@@ -151,6 +155,9 @@ def main():
             avg_val_loss = val_loss / (len(X_val) / args.batch_size)
             val_losses.append(avg_val_loss)
 
+            mlflow.log_metric("train_loss", avg_loss)
+            mlflow.log_metric("val_loss", avg_val_loss)
+
             print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
 
         # Save the loss history if specified
@@ -166,9 +173,10 @@ def main():
 
         # Save the model
         torch.save(model.state_dict(), "model.pt")
-        mlflow.pytorch.log_model(model, "model.pt")
-
-        #print(f'Model saved to {args.save}')
+        mlflow.pytorch.log_model(model, "model")
+        run_id = run.info.run_id
+        model_uri = f"runs:/{run_id}/model"
+        mlflow.register_model(model_uri=model_uri, name="solar-gen-lstnet")
 
         load_s3(os.path.join(args.save,"model.pt"),model.state_dict())
         print(f'Saved model to {args.save}')
