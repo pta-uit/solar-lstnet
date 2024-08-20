@@ -32,6 +32,7 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size (default: 128)')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate (default: 0.001)')
     parser.add_argument('--loss_history', type=str, default=None, help='Path to save the loss history (default: None, i.e., do not save)')
+    parser.add_argument('--best_params', type=str, default=None, help='S3 path to the best hyperparameters JSON file')
 
     args = parser.parse_args()
     args.cuda = args.gpu >= 0 and torch.cuda.is_available()
@@ -60,6 +61,25 @@ def main():
     #response = s3client.get_object(Bucket='trambk', Key=args.preprocessed_data)
     #body = response['Body'].read()
     #preprocessed_data = pickle.loads(body)
+
+    # Load best hyperparameters if provided
+    if args.best_params:
+        s3 = S3FileSystem()
+        try:
+            with s3.open(args.best_params, 'r') as f:
+                best_params = json.load(f)
+            print("Loaded best hyperparameters:", best_params)
+            for param, value in best_params.items():
+                if param == 'skip' and value not in [12, 24, 48]:
+                    print(f"Warning: Invalid 'skip' value {value}. Setting to default 24.")
+                    value = 24
+                setattr(args, param, value)
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON: {e}")
+            print("Continuing with default parameters")
+        except Exception as e:
+            print(f"Unexpected error when loading best parameters: {e}")
+            print("Continuing with default parameters")
 
     preprocessed_data = get_s3(args.preprocessed_data)
     
