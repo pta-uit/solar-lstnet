@@ -6,10 +6,11 @@ from models.LSTNet import Model
 from sklearn.model_selection import train_test_split
 import os
 import json
-import pickle
 from s3fs.core import S3FileSystem
 import boto3
 from botocore.exceptions import NoCredentialsError
+import pickle
+# pickle.DEFAULT_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTNet for Solar Generation Forecasting')
@@ -47,20 +48,28 @@ def get_s3(s3_path):
     s3 = S3FileSystem()
     return np.load(s3.open(s3_path), allow_pickle=True)
 
+def save_model(model, save_path, args, features):
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    
+    # Save model state dict
+    torch.save(model.state_dict(), save_path, _use_new_zipfile_serialization=True)
+    
+    # Save metadata separately
+    metadata = {
+        'args': vars(args),
+        'features': features
+    }
+    metadata_path = save_path.replace('.pt', '_metadata.pt')
+    torch.save(metadata, metadata_path, _use_new_zipfile_serialization=True)
+
+    print(f'Model saved to {save_path}')
+    print(f'Metadata saved to {metadata_path}')
+    
 def main():
     args = parse_args()
 
     device = torch.device(f'cuda:{args.gpu}' if args.cuda else 'cpu')
     print(f"Using device: {device}")
-
-    # Load preprocessed data
-   # with open(args.preprocessed_data, 'rb') as f:
-    #    preprocessed_data = pickle.load(f)
-
-    #s3client = boto3.client('s3')
-    #response = s3client.get_object(Bucket='trambk', Key=args.preprocessed_data)
-    #body = response['Body'].read()
-    #preprocessed_data = pickle.loads(body)
 
     # Load best hyperparameters if provided
     if args.best_params:
@@ -163,11 +172,18 @@ def main():
         print(f'Loss history saved to {args.loss_history}')
 
     # Save the model
-    torch.save(model.state_dict(), "model.pt")
-    #print(f'Model saved to {args.save}')
+    save_path = os.path.join(args.save, "modelv2.pt")
+    save_model(model, save_path, args, features)
 
-    load_s3(os.path.join(args.save,"model.pt"),model.state_dict())
-    print(f'Saved model to {args.save}')
+    # Upload to S3
+    try:
+        load_s3(save_path, torch.load(save_path, weights_only=True))
+        metadata_path = save_path.replace('.pt', '_metadata.pt')
+        load_s3(metadata_path, torch.load(metadata_path, weights_only=True))
+        print(f'Uploaded model and metadata to {args.save}')
+    except Exception as e:
+        print(f"Error uploading to S3: {e}")
+        print("Model and metadata saved locally but not uploaded to S3.")
 
 if __name__ == "__main__":
     main()
