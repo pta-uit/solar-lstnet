@@ -1,10 +1,12 @@
 import argparse
 import pickle
+import json
 from utils.data_util import DataUtil
 from s3fs.core import S3FileSystem
 import os
 import logging
 import time
+import pandas as pd
 
 def setup_logging():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -20,11 +22,37 @@ def parse_args():
     return parser.parse_args()
 
 def save_to_s3(s3_path, data, logger):
-    logger.info(f"Saving preprocessed data to S3: {s3_path}")
+    logger.info(f"Saving data to S3: {s3_path}")
     s3 = S3FileSystem()
     with s3.open(s3_path, 'wb') as f:
         pickle.dump(data, f)
     logger.info("Data successfully saved to S3")
+
+def generate_report(df, X, y, features, target, window, horizon, data_type):
+    report = {
+        "data_type": data_type,
+        "start_datetime": str(df.index.min()),
+        "end_datetime": str(df.index.max()),
+        "total_samples": len(df),
+        "features": features,
+        "target": target,
+        "window_size": window,
+        "horizon": horizon,
+        "X_shape": X.shape,
+        "y_shape": y.shape if y is not None else None,
+        "data_frequency": pd.infer_freq(df.index),
+        "missing_values": df.isnull().sum().to_dict(),
+        "feature_statistics": df[features].describe().to_dict() if features else None,
+        "target_statistics": df[target].describe().to_dict() if target else None
+    }
+    return report
+
+def save_report_to_s3(s3_path, report, logger):
+    logger.info(f"Saving report to S3: {s3_path}")
+    s3 = S3FileSystem()
+    with s3.open(s3_path, 'w') as f:
+        json.dump(report, f, indent=2)
+    logger.info("Report successfully saved to S3")
 
 def main():
     start_time = time.time()
@@ -65,10 +93,21 @@ def main():
         'horizon': args.horizon
     }
     
-    filename = "preprocessed_data.pkl" if args.building_data else "preprocessed_weather_only.pkl"
-    output_path = os.path.join(args.output, filename)
+    if args.building_data:
+        filename = "preprocessed_data.pkl"
+        data_type = "Weather and Building Data"
+    else:
+        filename = "preprocessed_weather_only.pkl"
+        data_type = "Weather Data Only"
     
+    output_path = os.path.join(args.output, filename)
     save_to_s3(output_path, preprocessed_data, logger)
+
+    # Generate and save report
+    report = generate_report(df, X, y, features, target, args.window, args.horizon, data_type)
+    report_filename = os.path.splitext(filename)[0] + '.json'
+    report_path = os.path.join(args.output, report_filename)
+    save_report_to_s3(report_path, report, logger)
 
     end_time = time.time()
     total_time = end_time - start_time
