@@ -6,11 +6,12 @@ from s3fs.core import S3FileSystem
 from models.LSTNet import Model
 from sklearn.preprocessing import MinMaxScaler
 import pickle
+from datetime import datetime, timedelta
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Make predictions using LSTNet model')
     parser.add_argument('--model_path', type=str, default='s3://trambk/solar-energy/model/modelv2.pt', help='S3 path to the model file')
-    parser.add_argument('--input_data', type=str, required=True, help='Path to the input data CSV file')
+    parser.add_argument('--input_data', type=str, required=True, help='Path to the input data pickle file')
     parser.add_argument('--output', type=str, default='predictions.csv', help='Path to save the predictions')
     parser.add_argument('--strategy', type=str, default='weighted_average', choices=['single', 'average', 'most_recent', 'weighted_average'], help='Strategy for processing predictions')
     parser.add_argument('--lambda_param', type=float, default=0.1, help='Lambda parameter for weighted average strategy')
@@ -40,25 +41,34 @@ def load_model_from_s3(s3_path):
         print(f"Error loading model: {str(e)}")
         return None, None
 
-def create_scaler(df):
+def create_scaler(data):
     scaler = MinMaxScaler()
-    scaler.fit(df)
+    reshaped_data = data.reshape(-1, data.shape[-1])
+    scaler.fit(reshaped_data)
     return scaler
 
-def preprocess_input(df, features, window_size, scaler):
-    df_scaled = pd.DataFrame(scaler.transform(df), columns=df.columns, index=df.index)
-    input_data = df_scaled[features].values
-    input_sequence = np.array([input_data[i:i+window_size] for i in range(len(input_data)-window_size+1)])
-    return torch.FloatTensor(input_sequence)
+def preprocess_input(data, scaler):
+    # Reshape the input data to 2D for scaling
+    original_shape = data.shape
+    reshaped_data = data.reshape(-1, data.shape[-1])
+    
+    # Scale the data
+    scaled_data = scaler.transform(reshaped_data)
+    
+    # Reshape back to original shape
+    scaled_data = scaled_data.reshape(original_shape)
+    
+    # Reshape to match the model's expected input
+    # Assuming the model expects (batch_size, 100, 6, 24)
+    batch_size, time_steps, features = scaled_data.shape
+    reshaped_data = scaled_data.reshape(batch_size, 100, 6, 24)
+    
+    return torch.FloatTensor(reshaped_data)
 
 def make_predictions(model, input_sequence, horizon, strategy='weighted_average'):
     with torch.no_grad():
         predictions = model(input_sequence)
-    
-    if strategy == 'single':
-        return predictions[:, 0].numpy()
-    else:
-        return predictions.numpy()
+    return predictions.numpy()
 
 def process_predictions(predictions, timestamps, strategy='weighted_average', lambda_param=0.1):
     if strategy == 'single':
@@ -105,22 +115,31 @@ def main():
         if model is None or metadata is None:
             raise ValueError("Failed to load model or metadata")
         
-        input_df = pd.read_csv(args.input_data, parse_dates=['timestamp'], index_col='timestamp')
-        features = metadata['features']
-        window_size = metadata['args']['window']
-        scaler = create_scaler(input_df)
-        input_sequence = preprocess_input(input_df, features, window_size, scaler)
+        with open(args.input_data, 'rb') as f:
+            input_data = pickle.load(f)
+        
+        features = input_data['features']
+        X = input_data['X']
+        
+        scaler = create_scaler(X)
+        input_sequence = preprocess_input(X, scaler)
+        
         horizon = metadata['args']['horizon']
         raw_predictions = make_predictions(model, input_sequence, horizon, args.strategy)
-        prediction_timestamps = input_df.index[window_size:]
+        
+        start_datetime = datetime.fromisoformat(input_data['start_datetime'])
+        prediction_timestamps = [start_datetime + timedelta(hours=i) for i in range(X.shape[0])]
+        
         processed_predictions = process_predictions(raw_predictions, prediction_timestamps, args.strategy, args.lambda_param)
-        target_feature = 'Solar Generation [W/kW]'
-        final_predictions = inverse_transform_predictions(processed_predictions, scaler, input_df.columns, target_feature)
+        target_feature = input_data['target']
+        final_predictions = inverse_transform_predictions(processed_predictions, scaler, features, target_feature)
         final_predictions.to_csv(args.output, index=False)
         print(f"Predictions saved to {args.output}")
 
     except Exception as e:
         print(f"Error during prediction: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()

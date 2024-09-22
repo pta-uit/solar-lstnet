@@ -39,6 +39,11 @@ def prepare_input_data(historical_data_path, weather_forecast_data_path, target_
     forecast_start_index = max(0, forecast_hours)
     forecast_end_index = forecast_start_index + f
 
+    print(f"Historical start time: {historical_start_time + timedelta(hours=historical_start_index)}")
+    print(f"Historical end time: {historical_start_time + timedelta(hours=historical_end_index)}")
+    print(f"Forecast start time: {forecast_start_time + timedelta(hours=forecast_start_index)}")
+    print(f"Forecast end time: {forecast_start_time + timedelta(hours=forecast_end_index)}")
+
     # Slice the data
     historical_slice = historical_data['X'][historical_start_index:historical_end_index]
     forecast_slice = weather_forecast_data['X'][forecast_start_index:forecast_end_index]
@@ -96,6 +101,8 @@ def prepare_input_data(historical_data_path, weather_forecast_data_path, target_
     print(f"Forecast data range: {forecast_start_index} to {forecast_end_index}")
     print(f"Common features: {common_features}")
 
+    print(f"Prepared data time range: {prepared_data['start_datetime']} to {pd.to_datetime(prepared_data['start_datetime']) + timedelta(hours=combined_data.shape[0])}")
+    
     return prepared_data
 
 def main():
