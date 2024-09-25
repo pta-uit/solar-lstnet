@@ -1,0 +1,7 @@
+torch
+numpy
+pandas
+scikit-learn
+s3fs
+boto3
+mlflow
