@@ -85,6 +85,21 @@ def prepare_input_data(historical_data_path, weather_forecast_data_path, target_
         combined_data = np.concatenate([combined_data, solar_generation], axis=2)
         common_features.append('Solar Generation [W/kW]')
 
+    # Ensure the combined data has the correct shape
+    target_length = h + f
+    current_length = combined_data.shape[0]
+    if current_length < target_length:
+        pad_length = target_length - current_length
+        padding = np.zeros((pad_length, combined_data.shape[1], combined_data.shape[2]))
+        combined_data = np.concatenate([combined_data, padding], axis=0)
+    elif current_length > target_length:
+        combined_data = combined_data[:target_length]
+
+    # Ensure we have exactly 168 time steps (1 week) for each sample
+    time_steps = 168
+    num_samples = combined_data.shape[0] // time_steps
+    combined_data = combined_data[:num_samples * time_steps].reshape(num_samples, time_steps, -1)
+
     print(f"Final combined data shape: {combined_data.shape}")
 
     # Create a dictionary to store the prepared data
@@ -92,15 +107,15 @@ def prepare_input_data(historical_data_path, weather_forecast_data_path, target_
         'X': combined_data,
         'features': common_features,
         'start_datetime': (historical_start_time + timedelta(hours=historical_start_index)).isoformat(),
-        'target': 'Solar Generation [W/kW]' if 'y' in historical_data else None
+        'target': 'Solar Generation [W/kW]' if 'y' in historical_data else None,
+        'h': h,
+        'f': f
     }
-
     # Add debugging information
     print(f"Target datetime: {target_datetime}")
     print(f"Historical data range: {historical_start_index} to {historical_end_index}")
     print(f"Forecast data range: {forecast_start_index} to {forecast_end_index}")
     print(f"Common features: {common_features}")
-
     print(f"Prepared data time range: {prepared_data['start_datetime']} to {pd.to_datetime(prepared_data['start_datetime']) + timedelta(hours=combined_data.shape[0])}")
     
     return prepared_data
