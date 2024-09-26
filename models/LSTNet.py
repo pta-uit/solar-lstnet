@@ -61,7 +61,7 @@ class Model(nn.Module):
         # highway
         if (self.hw > 0):
             z = x[:, -self.hw:, :]
-            z = z.view(batch_size, -1)
+            z = z.contiguous().reshape(batch_size, -1)
             z = self.highway(z)
             res = res + z
 
