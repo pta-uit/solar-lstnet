@@ -10,15 +10,10 @@ from s3fs.core import S3FileSystem
 import boto3
 from botocore.exceptions import NoCredentialsError
 import pickle
-# pickle.DEFAULT_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTNet for Solar Generation Forecasting')
-    
-    # Required arguments
     parser.add_argument('--preprocessed_data', type=str, required=True, help='Path to the preprocessed data file')
-    
-    # Optional arguments with default values
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use (default: -1, i.e., CPU)')
     parser.add_argument('--save', type=str, default='model.pt', help='Path to save the model')
     parser.add_argument('--hidRNN', type=int, default=100, help='Number of RNN hidden units (default: 100)')
@@ -96,14 +91,12 @@ def main():
     y = preprocessed_data['y']
     features = preprocessed_data['features']
     
-    # Add window and horizon to args
     args.window = preprocessed_data['window']
     args.horizon = preprocessed_data['horizon']
     
     # Split the data
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Convert to PyTorch tensors
     X_train = torch.FloatTensor(X_train).to(device)
     y_train = torch.FloatTensor(y_train).to(device)
     X_val = torch.FloatTensor(X_val).to(device)
@@ -119,7 +112,6 @@ def main():
     # Initialize the model
     model = Model(args, data).to(device)
 
-    # Define loss function and optimizer
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -144,7 +136,6 @@ def main():
         avg_loss = total_loss / (len(X_train) / args.batch_size)
         train_losses.append(avg_loss)
 
-        # Validation
         model.eval()
         val_loss = 0
         with torch.no_grad():
@@ -160,7 +151,6 @@ def main():
 
         print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
 
-    # Save the loss history if specified
     if args.loss_history:
         history = {
             'train_loss': train_losses,
@@ -172,10 +162,9 @@ def main():
         print(f'Loss history saved to {args.loss_history}')
 
     # Save the model
-    save_path = os.path.join(args.save, "modelv2.pt")
+    save_path = os.path.join(args.save, "model.pt")
     save_model(model, save_path, args, features)
 
-    # Upload to S3
     try:
         load_s3(save_path, torch.load(save_path, weights_only=True))
         metadata_path = save_path.replace('.pt', '_metadata.pt')
