@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-validation-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: data-validation-app
+    spec:
+      containers:
+        - name: data-validation
+          image: 625715126488.dkr.ecr.ap-southeast-1.amazonaws.com/data-validation:0.0.1
+          volumeMounts:
+          - name: aws-credentials-vl
+            mountPath: /root/.aws/credentials
+            subPath: credentials
+            readOnly: true
+          args:
+          - --weather_data
+          - s3://trambk/solar-energy/raw_data/weather.csv
+          - --building_data 
+          - s3://trambk/solar-energy/raw_data/Building_1.csv
+          - --output_report 
+          - s3://trambk/solar-energy/raw_data/
+      volumes:
+      - name: aws-credentials-vl
+        secret:
+          secretName: aws-secret
+      imagePullSecrets:
+        - name: ecr-secret
+      restartPolicy: Never
