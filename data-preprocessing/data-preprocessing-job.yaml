@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-preprocessing-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: data-preprocessing-app
+    spec:
+      containers:
+        - name: data-validation
+          image: 625715126488.dkr.ecr.ap-southeast-1.amazonaws.com/data-preprocessing:0.0.1
+          volumeMounts:
+          - name: aws-credentials-vl
+            mountPath: /root/.aws/credentials
+            subPath: credentials
+            readOnly: true
+          args:
+          - --weather_data 
+          - s3://trambk/solar-energy/raw_data/weather_cleaned.csv 
+          - --building_data 
+          - s3://trambk/solar-energy/raw_data/Building_1_cleaned.csv 
+          - --output 
+          - s3://trambk/solar-energy/preprocessed_data/
+      volumes:
+      - name: aws-credentials-vl
+        secret:
+          secretName: aws-secret
+      imagePullSecrets:
+        - name: ecr-secret
+      restartPolicy: Never
