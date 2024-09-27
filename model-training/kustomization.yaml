@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- model-training-job.yaml
+images:
+- name: 625715126488.dkr.ecr.ap-southeast-1.amazonaws.com/model-training
+  newTag: 4677c966

@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-training-job
+spec:
+  progressDeadlineSeconds: 7200
+  template:
+    metadata:
+      labels:
+        app: model-training-job
+    spec:
+      containers:
+        - name: model-training
+          image: 625715126488.dkr.ecr.ap-southeast-1.amazonaws.com/model-training:0.0.1
+          volumeMounts:
+          - name: aws-credentials-vl
+            mountPath: /root/.aws/credentials
+            subPath: credentials
+            readOnly: true
+          args:
+          - --batch_size 
+          - "32" 
+          - --preprocessed_data 
+          - s3://trambk/solar-energy/preprocessed_data/preprocessed_data.pkl 
+          - --save 
+          - s3://trambk/solar-energy/model/ 
+      volumes:
+      - name: aws-credentials-vl
+        secret:
+          secretName: aws-secret
+      imagePullSecrets:
+        - name: ecr-secret
+      restartPolicy: Never
