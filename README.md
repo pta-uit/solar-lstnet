@@ -6,56 +6,82 @@ Modeling Long- and Short-Term Temporal Patterns with Deep Neural Networks.(https
 ### Dataset
 NeurIPS 2022: CityLearn Challenge ([starter-kit-team-Together](https://gitlab.aicrowd.com/aicrowd/challenges/citylearn-challenge/citylearn-2022-starter-kit-team-together/-/tree/master/data/citylearn_challenge_2022_phase_1?ref_type=heads)); Building_1.csv & weather.csv
 
+### Model flow diagram
+![Architecture](https://i.imgur.com/UIQqYqp.png)
+
 ### Requirements
+```
+boto3==1.35.28
+botocore==1.35.23
+hyperopt==0.2.7
+numpy==2.1.1
+pandas==2.2.3
+s3fs==2024.9.0
+scikit_learn==1.5.2
+statsmodels==0.14.3
+torch==2.4.1+cu121
+```
 
+### Usage
+#### 1. Clone this repo:
 ```
-torch==1.9.0
-numpy==1.21.0
-pandas==1.3.0
-scikit-learn==0.24.2
-statsmodels==0.12.2
-matplotlib==3.4.2
+git clone https://github.com/pta-uit/solar-lstnet.git
 ```
+#### 2. Install requirements:
+```
+pip install -r requirements.txt
+```
+#### 3. Set up S3 environment:
+```
+import os
+import boto3
+import s3fs
 
-### Colab usage
+# Set up AWS credentials
+os.environ['AWS_ACCESS_KEY_ID'] = 'YOURS3ACCESSKEYID'
+os.environ['AWS_SECRET_ACCESS_KEY'] = 'YOURS3SECRETACCESSKEY'
 
-Clone this repo:
-```
-!git clone https://github.com/quocanuit/lstnet-solar-gen.git
-```
-Data preprocessing stage:
-```
-!python preprocess_data.py --weather_data /your_path/weather.csv --building_data /your_path/Building_1.csv --output preprocessed_data.pkl
-```
-Training stage:
-```
-!python main.py --batch_size 32 --preprocessed_data preprocessed_data.pkl --save model.pt --loss_history loss_history.json
-```
-#### Optional arguments for training:
-|--||
-|-|-|
-| `--gpu` | GPU to use (default: -1, i.e., CPU) |
-| `--save` | Path to save the model (default: 'model.pt') |
-| `--window` | Window size (default: 168) |
-| `--horizon` | Forecasting horizon (default: 24) |
-| `--hidRNN` | Number of RNN hidden units (default: 100) |
-| `--hidCNN` | Number of CNN hidden units (default: 100) |
-| `--hidSkip` | Number of skip RNN hidden units (default: 5) |
-| `--CNN_kernel` | CNN kernel size (default: 6) |
-| `--skip` | Skip length (default: 24) |
-| `--highway_window` | Highway window size (default: 24) |
-| `--dropout` | Dropout rate (default: 0.2) |
-| `--output_fun` | Output function: sigmoid, tanh or None (default: sigmoid) |
-| `--epochs` | Number of epochs (default: 100) |
-| `--batch_size` | Batch size (default: 128) |
-| `--lr` | Learning rate (default: 0.001) |
-| `--loss_history` | Path to save the loss history (default: None, i.e., do not save) |
+# Initialize S3 client
+s3 = boto3.client('s3')
 
-### Evaluating the model:
+# Initialize S3 filesystem
+fs = s3fs.S3FileSystem(anon=False)
+
+print("S3 setup complete.")
 ```
-!python eval.py --model model.pt --preprocessed_data preprocessed_data.pkl --loss_history loss_history.json
+#### 4. Data validation:
 ```
+python data_validation.py --weather_data s3://path/weather.csv --building_data s3://path/Building_1.csv --output_report s3://path/validation_report.json
+```
+#### 5. Data preprocessing:
+```
+python data_preprocessing.py --year 2022 --weather_data s3://path/weather_cleaned.csv --building_data s3://path/Building_1_cleaned.csv --solar --output s3://path/
+```
+- `--year`: start year of the dataset, set to current year if not specified
+- `--solar`: to tell the script if we're preprocessing data for training (include Solar Generation) or preprocessing data for predicting (not include Solar Generation)
+#### 6. Hyperparameter tuning:
+```
+python hyperparameter_tuning.py --preprocessed_data s3://path/preprocessed_data.pkl --max_evals 10 --save s3://path/
+```
+- `max_evals`: Maximum number of evaluations for hyperparameter tuning
+#### 7. Training:
+```
+python main.py --preprocessed_data s3://path/preprocessed_data.pkl --best_params s3://path/best_params.json --save s3://path/
+```
+- `best_params`: path to the best hyperparameters JSON file, train using default hyperparameters if not specicified
+#### 8. Prepare input data for prediction:
+```
+python input_preparation.py --historical_data s3://path/preprocessed_data.pkl --weather_forecast_data s3://path/preprocessed_weather_only.pkl --datetime "2022-06-01 00:00:00" --h 168 --f 24 --output s3://path/prepared_data.pkl
+```
+- We supposed that `h` hours before `datetime` in the preprocessed_data (which preprocessed with `--solar`) is historical data, and `f` hours after `datetime` in the weather_forecast_data (which preprocessed without `--solar`) are weather forecast data
+- Then the script will concatenate them to produce the input_data
+#### 9. Prediction
+```
+python predict.py --model_path s3://path/model.pt --input_data s3://path/prepared_data.pkl --output s3://path/predictions.csv --strategy weighted_average --lambda_param 0.1
+```
+- `strategy`: Strategy for processing predictions (single, average, most_recent, weighted_average),
+- `lambda_param`: Lambda parameter for weighted average strategy
+- The script will process predictions using weighted_average by default.
 
 #### Plot first sample:
-
 ![Forecast-plot](https://i.imgur.com/HHENEZd.png)

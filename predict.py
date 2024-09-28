@@ -9,9 +9,9 @@ import pickle
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Make predictions using LSTNet model')
-    parser.add_argument('--model_path', type=str, default='s3://trambk/solar-energy/model/model.pt', help='S3 path to the model file')
-    parser.add_argument('--input_data', type=str, default='s3://trambk/solar-energy/preprocessed_data/prepared_data.pkl', help='S3 path to the prepared input data pickle file')
-    parser.add_argument('--output', type=str, default='s3://trambk/solar-energy/predictions/predictions.csv', help='S3 path to save the predictions')
+    parser.add_argument('--model_path', type=str, required=True, help='S3 path to the model file')
+    parser.add_argument('--input_data', type=str, required=True, help='S3 path to the prepared input data pickle file')
+    parser.add_argument('--output', type=str, required=True, help='S3 path to save the predictions')
     parser.add_argument('--strategy', type=str, default='weighted_average', choices=['single', 'average', 'most_recent', 'weighted_average'], help='Strategy for processing predictions')
     parser.add_argument('--lambda_param', type=float, default=0.1, help='Lambda parameter for weighted average strategy')
     return parser.parse_args()
