@@ -9,10 +9,13 @@ import json
 from s3fs.core import S3FileSystem
 import boto3
 from botocore.exceptions import NoCredentialsError
+import mlflow
 import pickle
 
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTNet for Solar Generation Forecasting')
+
+    # Required arguments
     parser.add_argument('--preprocessed_data', type=str, required=True, help='Path to the preprocessed data file')
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use (default: -1, i.e., CPU)')
     parser.add_argument('--save', type=str, default='model.pt', help='Path to save the model')
@@ -28,6 +31,7 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size (default: 128)')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate (default: 0.001)')
     parser.add_argument('--loss_history', type=str, default=None, help='Path to save the loss history (default: None, i.e., do not save)')
+    parser.add_argument('--mlflow_uri', type=str, default="http://localhost:5000")
     parser.add_argument('--best_params', type=str, default=None, help='S3 path to the best hyperparameters JSON file')
 
     args = parser.parse_args()
@@ -118,61 +122,141 @@ def main():
     train_losses = []
     val_losses = []
 
-    for epoch in range(args.epochs):
-        model.train()
-        total_loss = 0
-        for i in range(0, len(X_train), args.batch_size):
-            batch_X = X_train[i:i+args.batch_size]
-            batch_y = y_train[i:i+args.batch_size]
+    mlflow.set_tracking_uri("{args.mlflow_uri}")
+    #mlflow.set_experiment(experiment_id="0")
+    mlflow.set_experiment("solar-generation")
+    with mlflow.start_run(run_name="lstnet-solar-gen") as run:
+        mlflow.log_param("hidRNN", args.hidRNN)
+        mlflow.log_param("hidCNN", args.hidCNN)
+        mlflow.log_param("hidSkip", args.hidSkip)
+        mlflow.log_param("CNN_kernel", args.CNN_kernel)
+        mlflow.log_param("skip", args.skip)
+        mlflow.log_param("highway_window", args.highway_window)
+        mlflow.log_param("dropout", args.dropout)
+        mlflow.log_param("output_fun", args.output_fun)
+        mlflow.log_param("epochs", args.epochs)
+        mlflow.log_param("batch_size", args.batch_size)
+        mlflow.log_param("lr", args.lr)
+        # with open("model_summary.txt", "w") as f:
+        #     f.write(str(summary(model)))
+        #     mlflow.log_artifact("model_summary.txt")
 
-            optimizer.zero_grad()
-            outputs = model(batch_X)
-            loss = criterion(outputs, batch_y)
-            loss.backward()
-            optimizer.step()
+        ###### I edited this part to run only 2 epochs for faster testing
+        ###### For real training, please uncomment the for loop below
+        #for epoch in range(args.epochs):
+        for epoch in range(0,2):
+            model.train()
+            total_loss = 0
+            for i in range(0, len(X_train), args.batch_size):
+                batch_X = X_train[i:i+args.batch_size]
+                batch_y = y_train[i:i+args.batch_size]
 
-            total_loss += loss.item()
-
-        avg_loss = total_loss / (len(X_train) / args.batch_size)
-        train_losses.append(avg_loss)
-
-        model.eval()
-        val_loss = 0
-        with torch.no_grad():
-            for i in range(0, len(X_val), args.batch_size):
-                batch_X = X_val[i:i+args.batch_size]
-                batch_y = y_val[i:i+args.batch_size]
+                optimizer.zero_grad()
                 outputs = model(batch_X)
                 loss = criterion(outputs, batch_y)
-                val_loss += loss.item()
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+
+            avg_loss = total_loss / (len(X_train) / args.batch_size)
+            train_losses.append(avg_loss)
+
+            # Validation
+            model.eval()
+            val_loss = 0
+            with torch.no_grad():
+                for i in range(0, len(X_val), args.batch_size):
+                    batch_X = X_val[i:i+args.batch_size]
+                    batch_y = y_val[i:i+args.batch_size]
+                    outputs = model(batch_X)
+                    loss = criterion(outputs, batch_y)
+                    val_loss += loss.item()
+            
+            avg_val_loss = val_loss / (len(X_val) / args.batch_size)
+            val_losses.append(avg_val_loss)
+
+            mlflow.log_metric("train_loss", avg_loss)
+            mlflow.log_metric("val_loss", avg_val_loss)
+
+            print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+
+        # Save the loss history if specified
+        if args.loss_history:
+            history = {
+                'train_loss': train_losses,
+                'val_loss': val_losses
+            }
+            os.makedirs(os.path.dirname(args.loss_history), exist_ok=True)
+            with open(args.loss_history, 'w') as f:
+                json.dump(history, f)
+            print(f'Loss history saved to {args.loss_history}')
+
+        # Save the model
+        torch.save(model.state_dict(), "model.pt")
+        mlflow.pytorch.log_model(model, "model")
+        run_id = run.info.run_id
+        model_uri = f"runs:/{run_id}/model"
+        mlflow.register_model(model_uri=model_uri, name="solar-gen-lstnet")
+
+        load_s3(os.path.join(args.save,"model.pt"),model.state_dict())
+        print(f'Saved model to {args.save}')
+# no mlflow
+#     for epoch in range(args.epochs):
+#         model.train()
+#         total_loss = 0
+#         for i in range(0, len(X_train), args.batch_size):
+#             batch_X = X_train[i:i+args.batch_size]
+#             batch_y = y_train[i:i+args.batch_size]
+
+#             optimizer.zero_grad()
+#             outputs = model(batch_X)
+#             loss = criterion(outputs, batch_y)
+#             loss.backward()
+#             optimizer.step()
+
+#             total_loss += loss.item()
+
+#         avg_loss = total_loss / (len(X_train) / args.batch_size)
+#         train_losses.append(avg_loss)
+
+#         model.eval()
+#         val_loss = 0
+#         with torch.no_grad():
+#             for i in range(0, len(X_val), args.batch_size):
+#                 batch_X = X_val[i:i+args.batch_size]
+#                 batch_y = y_val[i:i+args.batch_size]
+#                 outputs = model(batch_X)
+#                 loss = criterion(outputs, batch_y)
+#                 val_loss += loss.item()
         
-        avg_val_loss = val_loss / (len(X_val) / args.batch_size)
-        val_losses.append(avg_val_loss)
+#         avg_val_loss = val_loss / (len(X_val) / args.batch_size)
+#         val_losses.append(avg_val_loss)
 
-        print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+#         print(f'Epoch [{epoch+1}/{args.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
 
-    if args.loss_history:
-        history = {
-            'train_loss': train_losses,
-            'val_loss': val_losses
-        }
-        os.makedirs(os.path.dirname(args.loss_history), exist_ok=True)
-        with open(args.loss_history, 'w') as f:
-            json.dump(history, f)
-        print(f'Loss history saved to {args.loss_history}')
+#     if args.loss_history:
+#         history = {
+#             'train_loss': train_losses,
+#             'val_loss': val_losses
+#         }
+#         os.makedirs(os.path.dirname(args.loss_history), exist_ok=True)
+#         with open(args.loss_history, 'w') as f:
+#             json.dump(history, f)
+#         print(f'Loss history saved to {args.loss_history}')
 
-    # Save the model
-    save_path = os.path.join(args.save, "model.pt")
-    save_model(model, save_path, args, features)
+#     # Save the model
+#     save_path = os.path.join(args.save, "model.pt")
+#     save_model(model, save_path, args, features)
 
-    try:
-        load_s3(save_path, torch.load(save_path, weights_only=True))
-        metadata_path = save_path.replace('.pt', '_metadata.pt')
-        load_s3(metadata_path, torch.load(metadata_path, weights_only=True))
-        print(f'Uploaded model and metadata to {args.save}')
-    except Exception as e:
-        print(f"Error uploading to S3: {e}")
-        print("Model and metadata saved locally but not uploaded to S3.")
+#     try:
+#         load_s3(save_path, torch.load(save_path, weights_only=True))
+#         metadata_path = save_path.replace('.pt', '_metadata.pt')
+#         load_s3(metadata_path, torch.load(metadata_path, weights_only=True))
+#         print(f'Uploaded model and metadata to {args.save}')
+#     except Exception as e:
+#         print(f"Error uploading to S3: {e}")
+#         print("Model and metadata saved locally but not uploaded to S3.")
 
 if __name__ == "__main__":
     main()
